@@ -1,0 +1,29 @@
+{
+   
+   "content_scripts": [ {
+      "css": [ "content_scripts.css" ],
+      "js": [ "ELKL.js", "content_scripts.js" ],
+      "matches": [ "https://nanext.alcnanext.jp/*" ]
+   } ],
+   "description": "ALCのe-Learningを半自動化します",
+   "icons": {
+      "128": "icon_128.png",
+      "32": "icon_32.png",
+      "48": "icon_48.png"
+   },
+   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAoXzG4pT1IjnOjsCJiPN1UEPIGbFAPH7o74SYBJwqKaYPGdW8fmuvfq6SwyGBhgWaScNeBea6qTru3Neoc5ruCtypfhYgCmWEEA+AGJXbhLQcyGBZ2bocw/ruXz304Ddohd58EXTwc0RUQ5+iBHMWZsSTGh3ZK1RU2sDoHOryH9BgWrN0MXm0Tb8GtsP7ZolEvw32C/Fe7kSxVkbMYlpGNAPl7RA5xHkXnz7J1BC4Cd6bbr6LQMpjWz6K5AuoTr2pKECMxNuHXtkwR/N5NgunVGdYHJh7Yi+7eXHXdvGZEhUOwlm7m3E3cs1Bt3gsFnhCzsLUNLjT3uQOPykh5PzLAQIDAQAB",
+   
+   
+   
+   "manifest_version": 2,
+   "name": "ALC e-Learning Killer",
+   "browser_action": {
+      "default_icon": "icon_32.png",
+      "default_popup": "popup.html",
+      "default_title": ""
+   },
+   "options_page": "options.html",
+   "permissions": [ "tabs",  "storage", "https://nanext.alcnanext.jp/*" ],
+   "short_name": "e-Learning KILLER",
+   "version": "0.9.9.9"
+}

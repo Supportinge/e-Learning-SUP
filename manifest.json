@@ -25,5 +25,5 @@
    "options_page": "options.html",
    "permissions": [ "tabs",   "https://nanext.alcnanext.jp/*" ],
    "short_name": "e-Learning KILLER",
-   "version": "1.1.1.0"
+   "version": "1.1.2.0"
 }

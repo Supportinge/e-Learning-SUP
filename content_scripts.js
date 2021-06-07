@@ -46,5 +46,5 @@ var NOTPOPUPALC = document.getElementsByTagName("a");
         if (NOTPOPUPALC[i].target=="_blank" /* aggressive mode goes here */) { 
             NOTPOPUPALC[i].target="_top" /* _self vs _top */
         } 
-
+	}
 

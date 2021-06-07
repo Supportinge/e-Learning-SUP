@@ -37,7 +37,14 @@ const config = {childList: true,
     document.addEventListener('paste', forceBrowserDefault, true);
 	document.addEventListener('selectstart', forceBrowserDefault, true);
 	document.addEventListener('click', CancelReadOnly, false);
-	CancelReadOnly
-	ELKLObserve.observe(alcbody,config)
+	CancelReadOnly;
+	ELKLObserve.observe(alcbody,config);
+	document.addEventListener('onFullscreenchange',function(){document.exitFullscreen();},true);
+	
+var NOTPOPUPALC = document.getElementsByTagName("a"); 
+	for (i=0;i<NOTPOPUPALC.length;i++) { 
+        if (NOTPOPUPALC[i].target=="_blank" /* aggressive mode goes here */) { 
+            NOTPOPUPALC[i].target="_top" /* _self vs _top */
+        } 
 
 

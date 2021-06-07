@@ -11,7 +11,7 @@
       "32": "icon_32.png",
       "48": "icon_48.png"
    },
-   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAoXzG4pT1IjnOjsCJiPN1UEPIGbFAPH7o74SYBJwqKaYPGdW8fmuvfq6SwyGBhgWaScNeBea6qTru3Neoc5ruCtypfhYgCmWEEA+AGJXbhLQcyGBZ2bocw/ruXz304Ddohd58EXTwc0RUQ5+iBHMWZsSTGh3ZK1RU2sDoHOryH9BgWrN0MXm0Tb8GtsP7ZolEvw32C/Fe7kSxVkbMYlpGNAPl7RA5xHkXnz7J1BC4Cd6bbr6LQMpjWz6K5AuoTr2pKECMxNuHXtkwR/N5NgunVGdYHJh7Yi+7eXHXdvGZEhUOwlm7m3E3cs1Bt3gsFnhCzsLUNLjT3uQOPykh5PzLAQIDAQAB",
+   
    
    
    
@@ -23,7 +23,7 @@
       "default_title": ""
    },
    "options_page": "options.html",
-   "permissions": [ "tabs",  "storage", "https://nanext.alcnanext.jp/*" ],
+   "permissions": [ "tabs",   "https://nanext.alcnanext.jp/*" ],
    "short_name": "e-Learning KILLER",
-   "version": "1.1.0.0"
+   "version": "1.1.1.0"
 }

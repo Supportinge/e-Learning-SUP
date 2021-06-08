@@ -5,12 +5,13 @@ const forceBrowserDefault = function(e){
 function CancelReadOnly(){
     var EKUserAnswer = document.getElementsByTagName('textarea')
 	var EKfinalAnswer = document.getElementsByClassName("nan-qa-correct")
+	try{
 	for (let i=0;i<EKUserAnswer.length;i++){
 			EKUserAnswer[i].readOnly = false;
 			EKUserAnswer[i].value = EKfinalAnswer[i].innerHTML
 			EKUserAnswer[i].dispatchEvent(new Event('change'))
 		}
-        
+	}catch{void(0);}
     }
 	
 var alcBodyARRAY = document.getElementsByTagName("html")
@@ -37,9 +38,11 @@ const config = {childList: true,
     document.addEventListener('paste', forceBrowserDefault, true);
 	document.addEventListener('selectstart', forceBrowserDefault, true);
 	document.addEventListener('click', CancelReadOnly, false);
+	document.addEventListener('fullscreenchange',function(){
+		if(document.fullscreenElement != null){document.exitFullscreen();}else{;};},true)
 	CancelReadOnly;
 	ELKLObserve.observe(alcbody,config);
-	document.addEventListener('onFullscreenchange',function(){document.exitFullscreen();},true);
+	;
 	
 var NOTPOPUPALC = document.getElementsByTagName("a"); 
 	for (i=0;i<NOTPOPUPALC.length;i++) { 

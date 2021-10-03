@@ -4,7 +4,7 @@
       "js": [ "content_scripts.js" ],
       "matches": [ "https://nanext.alcnanext.jp/*" ]
    } ],
-   "description": "ALCのe-Learningを半自動化します",
+   "description": "ALCのe-Learningを半自動化します。",
    "icons": {
       "128": "icon_128.png",
       "32": "icon_32.png",
@@ -20,5 +20,5 @@
    "options_page": "options.html",
    "permissions": [ "https://nanext.alcnanext.jp/*" ],
    "short_name": "e-Learning KILLER",
-   "version": "1.2.0.0"
+   "version": "1.2.1.0"
 }

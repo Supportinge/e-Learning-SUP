@@ -6,22 +6,18 @@ const originalFetch = window.fetch;
 window.fetch = async function(...args) {
     const requestUrl = typeof args[0] === 'string' ? args[0] : args[0]?.url;
 
-    // もしURLが目的のJSONの法則に一致したら
-    if (requestUrl && requestUrl.includes('asset.alcnaplus.jp/anten/course/materials/') && requestUrl.endsWith('.json')) {
+    // 後ろにパラメータがついていても確実にキャッチ
+    if (requestUrl && requestUrl.includes('asset.alcnaplus.jp/anten/course/materials/') && requestUrl.includes('.json')) {
         
         try {
-            // 普通に通信させる
             const response = await originalFetch.apply(this, args);
-            
-            // レスポンスをクローンして中身を読む
             const clone = response.clone();
             clone.json().then(data => {
-                // ファイル名を取り出す（test_part1_1.json など）
-                const fileName = requestUrl.split('/').pop();
+                // クエリパラメータを除去してファイル名を取り出す
+                const cleanUrl = requestUrl.split('?')[0];
+                const fileName = cleanUrl.split('/').pop();
                 
-                // 変数に放り込む！
                 window.Answerlist[fileName] = data;
-                
                 buildDatabase(window.Answerlist);
             });
 
@@ -30,7 +26,6 @@ window.fetch = async function(...args) {
             console.error("json catch failed:", e);
         }
     }
-    // 関係ない通信はそのまま通す
     return originalFetch.apply(this, args);
 };
 const lookupDB = {};
@@ -42,88 +37,122 @@ function stripHtml(html) {
     return (tmp.textContent || tmp.innerText || "").trim().replace(/\s+/g, ' ');
 }
 
+// JSONのあらゆる階層から「選択肢」と「正解」を持つオブジェクトを全自動で探し出す関数
+function findQuestionsAutomated(obj, results = []) {
+    if (!obj || typeof obj !== 'object') return results;
+    
+    if (Array.isArray(obj.choices) && (obj.answer !== undefined || obj.correct !== undefined)) {
+        results.push(obj);
+    }
+    
+    for (const key in obj) {
+        if (Object.prototype.hasOwnProperty.call(obj, key)) {
+            findQuestionsAutomated(obj[key], results);
+        }
+    }
+    return results;
+}
+
 // ② 逆引きデータベースの構築
 function buildDatabase(allUnitData) {
+    for (const key in lookupDB) delete lookupDB[key];
+
     for (const fileName in allUnitData) {
-        if (fileName.startsWith("test_part")) {
-            const questions = allUnitData[fileName].questions;
-            if (!questions) continue;
+        const fileData = allUnitData[fileName];
+        if (!fileData) continue;
 
-            questions.forEach(q => {
-                if (q.choices && q.choices.length > 0) {
-                    // JSONの選択肢からHTMLタグを除去してきれいなテキストにする
-                    const cleanChoices = q.choices.map(c => {
-                        return {
-                            symbol: c.symbol,
-                            text: stripHtml(c.text)
-                        };
-                    });
+        const questions = findQuestionsAutomated(fileData);
 
-                    // 順序シャッフル対策：テキストをアルファベット順にソートして繋ぐ
-                    const sortedTexts = cleanChoices.map(c => c.text).sort();
-                    const key = sortedTexts.join('|');
-
-                    // 正解のテキストそのものを特定
-                    const correctChoice = cleanChoices.find(c => c.symbol === q.answer);
-
-                    lookupDB[key] = {
-                        questionId: q.id,
-                        correctText: correctChoice ? correctChoice.text : "",
-                        explanation: q.explanations?.question?.ja || "" // 和訳・解説
+        questions.forEach(q => {
+            if (q.choices && q.choices.length > 0) {
+                const cleanChoices = q.choices.map(c => {
+                    return {
+                        symbol: c.symbol || c.id || c.value || "", 
+                        text: stripHtml(c.text || c.label || c.content || "")
                     };
-                }
-            });
-        }
+                });
+
+                const sortedTexts = cleanChoices.map(c => c.text).sort();
+                const key = sortedTexts.join('|');
+
+                const ansSymbol = q.answer !== undefined ? q.answer : q.correct;
+                const correctChoice = cleanChoices.find(c => c.symbol === ansSymbol);
+
+                lookupDB[key] = {
+                    questionId: q.id || "",
+                    correctText: correctChoice ? correctChoice.text : "",
+                    explanation: q.explanations?.question?.ja || q.explanation || "" 
+                };
+            }
+        });
     }
     console.log("🕵️ データベース構築完了！ 登録問題数:", Object.keys(lookupDB).length);
 }
 
-// ③ 画面の文字を読み取って解答する関数
+// ③ 画面の文字を読み取って「問題ごと」に解答する関数
 function solveCurrentQuestion() {
-    // 画面の選択肢要素（MUIのラベル群）をすべて取得
+    // 画面上のすべての選択肢要素を取得
     const labels = Array.from(document.querySelectorAll('.MuiFormControlLabel-root'));
-    if (labels.length === 0) return;
+    if (labels.length === 0) {
+        console.log("⚠️ 画面上に選択肢が見つかりません。");
+        return;
+    }
 
-    const screenChoices = [];
+    // 【大幅改良】name属性ではなく、共通の親コンテナ（ラジオグループの箱）ごとにグループ化する
+    const groups = new Map();
     labels.forEach(label => {
-        // テキストが入っている最後の要素(span)を取得
-        const textSpan = label.lastElementChild;
-        // 実際にクリックすべきラジオボタンを取得
-        const input = label.querySelector('input[type="radio"]');
-        
-        if (textSpan && input) {
-            const text = textSpan.innerText.trim().replace(/\s+/g, ' ');
-            screenChoices.push({ label, input, text });
+        // MUIのラジオグループ要素、または直近の親要素を「問題の箱」とする
+        const container = label.closest('.MuiFormGroup-root, [role="radiogroup"]') || label.parentElement;
+        if (!groups.has(container)) {
+            groups.set(container, []);
+        }
+        groups.get(container).push(label);
+    });
+
+    let matchCount = 0;
+
+    // 各問題の箱（グループ）ごとに検索処理を実行
+    groups.forEach((groupLabels) => {
+        const screenChoices = [];
+
+        groupLabels.forEach(label => {
+            const textSpan = label.lastElementChild;
+            const input = label.querySelector('input[type="radio"]');
+            
+            if (textSpan && input) {
+                const text = textSpan.innerText.trim().replace(/\s+/g, ' ');
+                screenChoices.push({ label, input, text });
+            }
+        });
+
+        if (screenChoices.length === 0) return;
+
+        // 4択なら4択のテキストだけでソートしてキーを作成
+        const currentTexts = screenChoices.map(c => c.text).sort();
+        const currentKey = currentTexts.join('|');
+
+        // データベースから個別に検索
+        const foundData = lookupDB[currentKey];
+
+        if (foundData) {
+            matchCount++;
+            if (foundData.explanation) console.log(`📚 ID[${foundData.questionId}] 解説:`, foundData.explanation);
+
+            screenChoices.forEach(c => {
+                if (c.text === foundData.correctText) {
+                    // 正解の背景をハイライト
+                    c.label.style.backgroundColor = "rgba(255, 99, 71, 0.4)";
+                    c.label.style.border = "2px solid red";
+                    c.label.style.borderRadius = "5px";
+                }
+            });
+        } else {
+            console.log("⚠️ この問題はデータベースに見つかりませんでした。キー:", currentKey);
         }
     });
 
-    // 画面のテキストをソートして検索キーを作る（これでシャッフルを無効化！）
-    const currentTexts = screenChoices.map(c => c.text).sort();
-    const currentKey = currentTexts.join('|');
-
-    // データベースから検索
-    const foundData = lookupDB[currentKey];
-
-    if (foundData) {
-        //console.log("✅ 問題特定！ ID:", foundData.questionId);
-        //console.log("💡 正解のテキスト:", foundData.correctText);
-        if (foundData.explanation) console.log("📚 解説:", foundData.explanation);
-
-        // 画面の選択肢から、正解と同じテキストを持つものを探す
-        screenChoices.forEach(c => {
-            if (c.text === foundData.correctText) {
-                
-                // 【カンニングモード】正解の背景を赤くハイライトする
-                c.label.style.backgroundColor = "rgba(255, 99, 71, 0.4)";
-                c.label.style.border = "2px solid red";
-                c.label.style.borderRadius = "5px";
-
-                // 【オートパイロットモード】自動でクリックしたい場合は以下の // を外す
-                // c.input.click(); 
-            }
-        });
-    } else {
-        console.log("⚠️ この問題はデータベースに見つかりませんでした。");
+    if (matchCount > 0) {
+        console.log(`✅ ${matchCount}個の問題を個別にハイライトしました！`);
     }
 }
 
@@ -131,12 +160,14 @@ function solveCurrentQuestion() {
 // 実行部分
 // ==========================================
 
-// 1. JSONデータを渡してデータベースを構築（※allUnitDataが定義されていること）
 buildDatabase(window.Answerlist);
 
-// 2. ショートカットキーの設定（Shift + Spaceキーを押したら解く）
 document.addEventListener('keydown', (e) => {
-    if (e.shiftKey && e.code === 'Space') {
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable) {
+        return;
+    }
+
+    if (e.key === 'f' || e.key === 'F') {
         solveCurrentQuestion();
     }
 });

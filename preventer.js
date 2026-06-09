@@ -1,3 +1,9 @@
+
+const forceBrowserDefault = function(e){
+	e.stopImmediatePropagation();
+	return true;
+};
+
 document.addEventListener('beforecopy', forceBrowserDefault, true);
 document.addEventListener('beforecut', forceBrowserDefault, true);
 document.addEventListener('contextmenu', forceBrowserDefault, true);
@@ -12,8 +18,3 @@ document.addEventListener('selectstart', forceBrowserDefault, true);
 document.addEventListener('fullscreenchange',function(){if(document.fullscreenElement != null){document.exitFullscreen();}else{;};},true);
 //console.log("EvScreenOK")
 //ELKLObserve.observe(document.getElementsByTagName("html")[0],{childList: true,subtree: true,characterData: true,subtree: true});
-
-const forceBrowserDefault = function(e){
-	e.stopImmediatePropagation();
-	return true;
-};

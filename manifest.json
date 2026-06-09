@@ -7,7 +7,6 @@
       "run_at": "document_start",
       "world": "MAIN"  
    },{
-      "css": [ "content_scripts.css" ],
       "js": [ "preventer.js" ],
       "matches": [ "https://student.alcnaplus.jp/*" ],
       "run_at": "document_start",

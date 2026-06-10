@@ -37,122 +37,164 @@ function stripHtml(html) {
     return (tmp.textContent || tmp.innerText || "").trim().replace(/\s+/g, ' ');
 }
 
-// JSONのあらゆる階層から「選択肢」と「正解」を持つオブジェクトを全自動で探し出す関数
-function findQuestionsAutomated(obj, results = []) {
-    if (!obj || typeof obj !== 'object') return results;
-    
-    if (Array.isArray(obj.choices) && (obj.answer !== undefined || obj.correct !== undefined)) {
-        results.push(obj);
-    }
-    
-    for (const key in obj) {
-        if (Object.prototype.hasOwnProperty.call(obj, key)) {
-            findQuestionsAutomated(obj[key], results);
+// 検索時の空白や大文字小文字のズレを吸収するための正規化関数
+function normalizeText(text) {
+    return stripHtml(text).replace(/\s+/g, '').toLowerCase();
+}
+
+// ② オブジェクトの奥底に隠れた「問題データ」をすべて探し出す探索関数
+function findAllQuestions(obj) {
+    let questions = [];
+    if (Array.isArray(obj)) {
+        for (let item of obj) questions = questions.concat(findAllQuestions(item));
+    } else if (obj !== null && typeof obj === 'object') {
+        // 標準的な問題データ (answerがあるもの)
+        if (obj.answer) {
+            questions.push(obj);
+        }
+        // 単語テスト系データ (BlqQuestionがあるもの)の救済措置
+        else if (obj.BlqQuestion && obj.BlqCorrect) {
+            questions.push({
+                id: "vocab_" + obj.BlqQuestion,
+                answer: obj.BlqCorrect,
+                question: { en: obj.BlqQuestion }
+            });
+        }
+        // 違えば、さらに下の階層を探索
+        else {
+            for (let key in obj) questions = questions.concat(findAllQuestions(obj[key]));
         }
     }
-    return results;
+    return questions;
 }
 
 // ② 逆引きデータベースの構築
-function buildDatabase(allUnitData) {
-    for (const key in lookupDB) delete lookupDB[key];
+function buildDatabase(rawData) {
+    let data;
+    try { data = typeof rawData === 'string' ? JSON.parse(rawData) : rawData; }
+    catch (e) { return console.error("❌ JSONデータのパースに失敗しました。", e); }
 
-    for (const fileName in allUnitData) {
-        const fileData = allUnitData[fileName];
-        if (!fileData) continue;
+    const allQuestions = findAllQuestions(data);
 
-        const questions = findQuestionsAutomated(fileData);
+    allQuestions.forEach(q => {
+        // 【パターンA】選択肢がある場合
+        if (q.choices && q.choices.length > 0) {
+            const cleanChoices = q.choices.map(c => ({ symbol: c.symbol, text: stripHtml(c.text) }));
+            const choiceKey = cleanChoices.map(c => c.text).sort().join('|');
+            const correctChoice = cleanChoices.find(c => c.symbol === q.answer);
 
-        questions.forEach(q => {
-            if (q.choices && q.choices.length > 0) {
-                const cleanChoices = q.choices.map(c => {
-                    return {
-                        symbol: c.symbol || c.id || c.value || "", 
-                        text: stripHtml(c.text || c.label || c.content || "")
-                    };
-                });
-
-                const sortedTexts = cleanChoices.map(c => c.text).sort();
-                const key = sortedTexts.join('|');
-
-                const ansSymbol = q.answer !== undefined ? q.answer : q.correct;
-                const correctChoice = cleanChoices.find(c => c.symbol === ansSymbol);
-
-                lookupDB[key] = {
-                    questionId: q.id || "",
-                    correctText: correctChoice ? correctChoice.text : "",
-                    explanation: q.explanations?.question?.ja || q.explanation || "" 
+            lookupDB_Choices[choiceKey] = {
+                questionId: q.id,
+                correctText: correctChoice ? correctChoice.text : "",
+                explanation: q.explanations?.question?.ja || q.explanation || ""
+            };
+        } 
+        // 【パターンB】選択肢がない（記述式）場合
+        else if (q.answer) {
+            // 問題文（英語または日本語）を取得
+            const qText = q.question?.en || q.question?.ja || q.explanations?.question?.en || q.explanations?.question?.ja || q.BlqQuestion || "";
+            
+            if (qText) {
+                // 問題文を「空白なしの小文字」に圧縮してキーにする
+                const textKey = normalizeText(qText);
+                lookupDB_Text[textKey] = {
+                    questionId: q.id,
+                    correctText: q.answer, // 記述式の正解
+                    explanation: q.explanations?.question?.ja || q.explanation || ""
                 };
             }
-        });
+        }
+    });
+
+    console.log(`🕵️ データベース構築完了！ 選択肢問題: ${Object.keys(lookupDB_Choices).length}件, 記述式問題: ${Object.keys(lookupDB_Text).length}件`);
+}
+
+// ④ Reactのテキストボックスに人間が打ったように強制入力する関数
+function setReactInputValue(inputElement, value) {
+    const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value")?.set;
+    const nativeTextAreaValueSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, "value")?.set;
+    
+    if (inputElement.tagName === "TEXTAREA" && nativeTextAreaValueSetter) {
+        nativeTextAreaValueSetter.call(inputElement, value);
+    } else if (nativeInputValueSetter) {
+        nativeInputValueSetter.call(inputElement, value);
+    } else {
+        inputElement.value = value;
     }
-    console.log("🕵️ データベース構築完了！ 登録問題数:", Object.keys(lookupDB).length);
+    inputElement.dispatchEvent(new Event('input', { bubbles: true }));
+    inputElement.dispatchEvent(new Event('change', { bubbles: true }));
 }
 
 // ③ 画面の文字を読み取って「問題ごと」に解答する関数
+// ⑤ 画面の文字を読み取って解答する関数
 function solveCurrentQuestion() {
-    // 画面上のすべての選択肢要素を取得
     const labels = Array.from(document.querySelectorAll('.MuiFormControlLabel-root'));
-    if (labels.length === 0) {
-        console.log("⚠️ 画面上に選択肢が見つかりません。");
-        return;
-    }
 
-    // 【大幅改良】name属性ではなく、共通の親コンテナ（ラジオグループの箱）ごとにグループ化する
-    const groups = new Map();
-    labels.forEach(label => {
-        // MUIのラジオグループ要素、または直近の親要素を「問題の箱」とする
-        const container = label.closest('.MuiFormGroup-root, [role="radiogroup"]') || label.parentElement;
-        if (!groups.has(container)) {
-            groups.set(container, []);
-        }
-        groups.get(container).push(label);
-    });
-
-    let matchCount = 0;
-
-    // 各問題の箱（グループ）ごとに検索処理を実行
-    groups.forEach((groupLabels) => {
+    // ==========================================
+    // 【パターンA】画面に選択肢（ラジオボタン）がある場合
+    // ==========================================
+    if (labels.length > 0) {
         const screenChoices = [];
-
-        groupLabels.forEach(label => {
+        labels.forEach(label => {
             const textSpan = label.lastElementChild;
             const input = label.querySelector('input[type="radio"]');
-            
-            if (textSpan && input) {
-                const text = textSpan.innerText.trim().replace(/\s+/g, ' ');
-                screenChoices.push({ label, input, text });
-            }
+            if (textSpan && input) screenChoices.push({ label, input, text: stripHtml(textSpan.innerText) });
         });
 
-        if (screenChoices.length === 0) return;
-
-        // 4択なら4択のテキストだけでソートしてキーを作成
-        const currentTexts = screenChoices.map(c => c.text).sort();
-        const currentKey = currentTexts.join('|');
-
-        // データベースから個別に検索
-        const foundData = lookupDB[currentKey];
+        const currentKey = screenChoices.map(c => c.text).sort().join('|');
+        const foundData = lookupDB_Choices[currentKey];
 
         if (foundData) {
-            matchCount++;
-            if (foundData.explanation) console.log(`📚 ID[${foundData.questionId}] 解説:`, foundData.explanation);
-
+            console.log("✅ [選択肢] 問題特定！ 正解:", foundData.correctText);
             screenChoices.forEach(c => {
                 if (c.text === foundData.correctText) {
-                    // 正解の背景をハイライト
+                    // カンニング用ハイライト
                     c.label.style.backgroundColor = "rgba(255, 99, 71, 0.4)";
                     c.label.style.border = "2px solid red";
                     c.label.style.borderRadius = "5px";
+                    // 自動クリック
+                    // c.input.click(); 
                 }
             });
         } else {
-            console.log("⚠️ この問題はデータベースに見つかりませんでした。キー:", currentKey);
+            console.log("⚠️ この選択肢問題は見つかりませんでした。");
         }
-    });
+    } 
+    // ==========================================
+    // 【パターンB】画面に選択肢がない（記述式）場合
+    // ==========================================
+    else {
+        // 画面のテキストをすべて取得し、「空白なしの小文字」に圧縮
+        const screenText = normalizeText(document.body.innerText);
+        
+        let foundData = null;
+        // 辞書の中の問題文が、画面のテキストに含まれているか検索
+        for (const [qTextKey, data] of Object.entries(lookupDB_Text)) {
+            if (qTextKey.length > 3 && screenText.includes(qTextKey)) {
+                foundData = data;
+                break;
+            }
+        }
 
-    if (matchCount > 0) {
-        console.log(`✅ ${matchCount}個の問題を個別にハイライトしました！`);
+        if (foundData) {
+            console.log("✅ [記述式] 問題特定！ 正解:", foundData.correctText);
+            
+            // 画面の入力欄（テキストボックス）を探す
+            const inputField = document.querySelector('input[type="text"], input[type="email"], textarea');
+            if (inputField) {
+                // 正解を強制入力！
+                setReactInputValue(inputField, foundData.correctText);
+                
+                // 入力欄を赤く光らせる
+                inputField.style.backgroundColor = "rgba(255, 99, 71, 0.2)";
+                inputField.style.border = "2px solid red";
+                console.log("✍️ 自動入力完了！");
+            } else {
+                console.log("⚠️ 正解は分かりましたが、画面に入力欄が見つかりません。");
+            }
+        } else {
+            console.log("⚠️ この記述式問題は見つかりませんでした。");
+        }
     }
 }
 

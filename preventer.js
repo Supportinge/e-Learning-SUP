@@ -3,7 +3,7 @@ const forceBrowserDefault = function(e){
 	e.stopImmediatePropagation();
 	return true;
 };
-
+const Click = new Event("click",{bubbles: true});
 document.addEventListener('beforecopy', forceBrowserDefault, true);
 document.addEventListener('beforecut', forceBrowserDefault, true);
 document.addEventListener('contextmenu', forceBrowserDefault, true);

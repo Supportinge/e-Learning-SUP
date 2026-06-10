@@ -1,6 +1,6 @@
 // 取得したJSONデータを保存しておく変数
 window.Answerlist = {};
-// 2. sendBeacon での送信もブロック
+// 2. sendBeacon での送信もブロック(念のため。)
 const originalSendBeacon = navigator.sendBeacon;
 navigator.sendBeacon = function(url, data) {
     if (typeof url === 'string' && url.includes('sentry-tunnel')) {
@@ -13,7 +13,7 @@ const originalFetch = window.fetch;
 
 window.fetch = async function(...args) {
     const requestUrl = typeof args[0] === 'string' ? args[0] : args[0]?.url;
-    // 🚫 【追加】sentry-tunnel の通信をブロックして偽の成功を返す
+    // 🚫 【追加】sentry-tunnel の通信をブロックして偽の成功を返す(念のため。)
     // sentry-tunnel への通信を検知したら、通信せずに「成功」を返す
     if (requestUrl && requestUrl.includes('sentry-tunnel')) {
         console.log("🛡️ [Sentry Blocker] Sentryへのfetch通信を遮断しました");
@@ -21,8 +21,6 @@ window.fetch = async function(...args) {
             status: 200,
             headers: { 'Content-Type': 'application/json' }
         });
-    }else{
-        console.log(" [Fetch]", requestUrl);
     }
     // 後ろにパラメータがついていても確実にキャッチ
     if (requestUrl && requestUrl.includes('asset.alcnaplus.jp/anten/course/materials/') && requestUrl.includes('.json')) {
@@ -124,7 +122,7 @@ function buildDatabase(rawData) {
         }
     });
 
-    //console.log(`🕵️ データベース構築完了！ 選択肢問題: ${Object.keys(lookupDB.choices).length}件, 記述式問題: ${Object.keys(lookupDB.text).length}件`);
+    console.log(`🕵️ データベース構築完了！ 選択肢問題: ${Object.keys(lookupDB.choices).length}件, 記述式問題: ${Object.keys(lookupDB.text).length}件`);
 }
 
 // ④ Reactのテキストボックスに人間が打ったように強制入力する関数
@@ -163,7 +161,7 @@ function solveCurrentQuestion() {
         const foundData = lookupDB.choices[currentKey];
 
         if (foundData) {
-            //console.log("✅ [選択肢] 問題特定！ 正解:", foundData.correctText);
+            console.log("✅ [選択肢] 問題特定！ 正解:", foundData.correctText);
             screenChoices.forEach(c => {
                 if (c.text === foundData.correctText) {
                     // カンニング用ハイライト
@@ -175,7 +173,7 @@ function solveCurrentQuestion() {
                 }
             });
         } else {
-            //console.log("⚠️ この選択肢問題は見つかりませんでした。");
+            console.log("⚠️ この選択肢問題は見つかりませんでした。");
         }
     } 
     // ==========================================
@@ -195,7 +193,7 @@ function solveCurrentQuestion() {
         }
 
         if (foundData) {
-            //console.log("✅ [記述式] 問題特定！ 正解:", foundData.correctText);
+            console.log("✅ [記述式] 問題特定！ 正解:", foundData.correctText);
             
             // 画面の入力欄（テキストボックス）を探す
             const inputField = document.querySelector('input[type="text"], input[type="email"], textarea');
@@ -206,12 +204,12 @@ function solveCurrentQuestion() {
                 // 入力欄を赤く光らせる
                 inputField.style.backgroundColor = "rgba(255, 99, 71, 0.2)";
                 inputField.style.border = "2px solid red";
-                //console.log("✍️ 自動入力完了！");
+                console.log("✍️ 自動入力完了！");
             } else {
-                //console.log("⚠️ 正解は分かりましたが、画面に入力欄が見つかりません。");
+                console.log("⚠️ 正解は分かりましたが、画面に入力欄が見つかりません。");
             }
         } else {
-            //console.log("⚠️ この記述式問題は見つかりませんでした。");
+            console.log("⚠️ この記述式問題は見つかりませんでした。");
         }
     }
 }

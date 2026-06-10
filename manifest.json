@@ -35,5 +35,5 @@
    "options_page": "options.html",
    "host_permissions": [ "https://student.alcnaplus.jp/*" ],
    "short_name": "e-Learning KILLER",
-   "version": "2.0.0.1"
+   "version": "2.0.1.0"
 }

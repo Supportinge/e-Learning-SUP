@@ -20,7 +20,18 @@
    },   
    
    "name": "ALC e-Learning Killer",
-
+  "permissions": [
+    "declarativeNetRequest"
+  ],
+    "declarative_net_request": {
+    "rule_resources": [
+      {
+        "id": "ruleset_1",
+        "enabled": true,
+        "path": "rules.json"
+      }
+    ]
+  },
    "options_page": "options.html",
    "host_permissions": [ "https://student.alcnaplus.jp/*" ],
    "short_name": "e-Learning KILLER",

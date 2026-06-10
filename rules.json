@@ -1,0 +1,20 @@
+[
+  {
+    "id": 1,
+    "priority": 1,
+    "action": {
+      "type": "block"
+    },
+    "condition": {
+      "urlFilter": "sentry-tunnel",
+      "resourceTypes": [
+        "xmlhttprequest",
+        "ping",
+        "script",
+        "other",
+        "main_frame",
+        "sub_frame"
+      ]
+    }
+  }
+]

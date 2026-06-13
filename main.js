@@ -1,49 +1,50 @@
 // 取得したJSONデータを保存しておく変数
-window.Answerlist = {};
-// 2. sendBeacon での送信もブロック(念のため。)
-const originalSendBeacon = navigator.sendBeacon;
-navigator.sendBeacon = function(url, data) {
-    if (typeof url === 'string' && url.includes('sentry-tunnel')) {
-        console.log("🛡️ [Sentry Blocker] SentryへのsendBeacon通信を遮断しました");
-        return true; // 成功したフリをする
-    }
-    return originalSendBeacon.call(this, url, data);
-};
-const originalFetch = window.fetch;
-
-window.fetch = async function(...args) {
-    const requestUrl = typeof args[0] === 'string' ? args[0] : args[0]?.url;
-    // 🚫 【追加】sentry-tunnel の通信をブロックして偽の成功を返す(念のため。)
-    // sentry-tunnel への通信を検知したら、通信せずに「成功」を返す
-    if (requestUrl && requestUrl.includes('sentry-tunnel')) {
-        console.log("🛡️ [Sentry Blocker] Sentryへのfetch通信を遮断しました");
-        return new Response(JSON.stringify({ id: "mocked-sentry" }), {
-            status: 200,
-            headers: { 'Content-Type': 'application/json' }
-        });
-    }
-    // 後ろにパラメータがついていても確実にキャッチ
-    if (requestUrl && requestUrl.includes('asset.alcnaplus.jp/anten/course/materials/') && requestUrl.includes('.json')) {
-        
-        try {
-            const response = await originalFetch.apply(this, args);
-            const clone = response.clone();
-            clone.json().then(data => {
-                // クエリパラメータを除去してファイル名を取り出す
-                const cleanUrl = requestUrl.split('?')[0];
-                const fileName = cleanUrl.split('/').pop();
-                
-                window.Answerlist[fileName] = data;
-                buildDatabase(window.Answerlist);
-            });
-
-            return response;
-        } catch (e) {
-            console.error("json catch failed:", e);
+window.Answerlist = window.Answerlist || {};
+if (!window.isSendBeaconIntercepted) {
+    const originalSendBeacon = navigator.sendBeacon;
+    navigator.sendBeacon = function(url, data) {
+        if (typeof url === 'string' && url.includes('sentry-tunnel')) {
+            console.log("🛡️ [Sentry Blocker] SentryへのsendBeacon通信を遮断しました");
+            return true;
         }
-    }
-    return originalFetch.apply(this, args);
-};
+        return originalSendBeacon.call(this, url, data);
+    };
+    window.isSendBeaconIntercepted = true;
+}
+
+if (!window.isFetchIntercepted) {
+    const originalFetch = window.fetch;
+
+    window.fetch = async function(...args) {
+        const requestUrl = typeof args[0] === 'string' ? args[0] : args[0]?.url;
+        if (requestUrl && requestUrl.includes('sentry-tunnel')) {
+            console.log("🛡️ [Sentry Blocker] Sentryへのfetch通信を遮断しました");
+            return new Response(JSON.stringify({ id: "mocked-sentry" }), {
+                status: 200,
+                headers: { 'Content-Type': 'application/json' }
+            });
+        }
+        if (requestUrl && requestUrl.includes('asset.alcnaplus.jp/anten/course/materials/') && requestUrl.includes('.json')) {
+            try {
+                const response = await originalFetch.apply(this, args);
+                const clone = response.clone();
+                clone.json().then(data => {
+                    const cleanUrl = requestUrl.split('?')[0];
+                    const fileName = cleanUrl.split('/').pop();
+
+                    window.Answerlist[fileName] = data;
+                    buildDatabase(window.Answerlist);
+                });
+
+                return response;
+            } catch (e) {
+                console.error("json catch failed:", e);
+            }
+        }
+        return originalFetch.apply(this, args);
+    };
+    window.isFetchIntercepted = true;
+}
 const lookupDB = {choices: {}, text: {}};
 
 // ① JSONに含まれるHTMLタグを取り除いて純粋なテキストにする便利関数
@@ -65,8 +66,8 @@ function findAllQuestions(obj) {
         for (let item of obj) questions = questions.concat(findAllQuestions(item));
     } else if (obj !== null && typeof obj === 'object') {
         // 標準的な問題データ (answerがあるもの)
-        if (obj.answer) {
-            questions.push(obj);
+        if (obj.answer !== undefined || obj.correct !== undefined) {
+            questions.push(obj.answer !== undefined ? obj : { ...obj, answer: obj.correct });
         }
         // 単語テスト系データ (BlqQuestionがあるもの)の救済措置
         else if (obj.BlqQuestion && obj.BlqCorrect) {
@@ -145,6 +146,7 @@ function setReactInputValue(inputElement, value) {
 // ⑤ 画面の文字を読み取って解答する関数
 function solveCurrentQuestion() {
     const labels = Array.from(document.querySelectorAll('.MuiFormControlLabel-root'));
+    let solved = false;
 
     // ==========================================
     // 【パターンA】画面に選択肢（ラジオボタン）がある場合
@@ -162,6 +164,7 @@ function solveCurrentQuestion() {
 
         if (foundData) {
             console.log("✅ [選択肢] 問題特定！ 正解:", foundData.correctText);
+            solved = true;
             screenChoices.forEach(c => {
                 if (c.text === foundData.correctText) {
                     // カンニング用ハイライト
@@ -194,6 +197,7 @@ function solveCurrentQuestion() {
 
         if (foundData) {
             console.log("✅ [記述式] 問題特定！ 正解:", foundData.correctText);
+            solved = true;
             
             // 画面の入力欄（テキストボックス）を探す
             const inputField = document.querySelector('input[type="text"], input[type="email"], textarea');
@@ -212,6 +216,143 @@ function solveCurrentQuestion() {
             console.log("⚠️ この記述式問題は見つかりませんでした。");
         }
     }
+
+    return solved;
+}
+
+function solveAnyQuestion() {
+    const allQuestions = [];
+    for (const fileName in window.Answerlist) {
+        findAllQuestions(window.Answerlist[fileName], allQuestions);
+    }
+
+    if (allQuestions.length === 0) {
+        console.log("⚠️ データベースに問題がありません。");
+        return false;
+    }
+
+    console.log(`🎯 スナイパーモード発動！画面の問題を解析します…`);
+
+    const radioGroupsMap = new Map();
+    document.querySelectorAll('.MuiFormControlLabel-root').forEach(label => {
+        const parent = label.closest('[role="radiogroup"], .MuiFormGroup-root') || label.parentElement.parentElement;
+        if (!radioGroupsMap.has(parent)) radioGroupsMap.set(parent, []);
+        radioGroupsMap.get(parent).push(label);
+    });
+    const radioGroups = Array.from(radioGroupsMap.values());
+
+    let solved = false;
+
+    radioGroups.forEach(groupLabels => {
+        const screenChoices = groupLabels.map(label => stripHtml(label.innerText).replace(/\s+/g, ''));
+        if (screenChoices.length === 0) return;
+
+        let bestQ = null;
+        let maxOverlap = 0;
+
+        for (const q of allQuestions) {
+            if (!q.choices) continue;
+            const qChoices = q.choices.map(c => stripHtml(c.text || c.content || c.label || "").replace(/\s+/g, ''));
+            let overlap = 0;
+            for (const sc of screenChoices) {
+                if (qChoices.some(qc => qc.includes(sc) || sc.includes(qc) || qc === sc)) overlap++;
+            }
+            if (overlap > maxOverlap) {
+                maxOverlap = overlap;
+                bestQ = q;
+            }
+        }
+
+        if (bestQ && maxOverlap >= 1) {
+            let tempSymbol = "";
+            if (typeof bestQ.answer === 'object' && bestQ.answer !== null) tempSymbol = bestQ.answer.choice || bestQ.answer.symbol;
+            else if (typeof bestQ.answer === 'string') tempSymbol = bestQ.answer;
+
+            if (tempSymbol && /^[A-D]$/i.test(tempSymbol)) {
+                const idx = tempSymbol.toUpperCase().charCodeAt(0) - 65;
+                if (groupLabels[idx]) {
+                    groupLabels[idx].click();
+                    solved = true;
+                }
+            } else if (!isNaN(tempSymbol) && groupLabels[Number(tempSymbol)]) {
+                groupLabels[Number(tempSymbol)].click();
+                solved = true;
+            }
+        }
+    });
+
+    const pageText = document.body.innerText.replace(/[\s\/]+/g, '');
+    const matchedQuestions = [];
+
+    for (const q of allQuestions) {
+        const ansObj = extractTextAnswerObj(q);
+        if (ansObj.text || ansObj.clickItems.length > 0) {
+            const qEn = stripHtml(q.question?.en || "").replace(/[\s\/]+/g, '');
+            const qJa = stripHtml(q.question?.ja || "").replace(/[\s\/]+/g, '');
+
+            if ((qEn.length > 5 && pageText.includes(qEn.substring(0, 20))) ||
+                (qJa.length > 5 && pageText.includes(qJa.substring(0, 20)))) {
+                matchedQuestions.push({ q, ansObj });
+            }
+        }
+    }
+
+    if (matchedQuestions.length > 0) {
+        console.log(`📝 ${matchedQuestions.length}件の記述/並び替え問題をロックオンしました！`);
+
+        const textInputs = Array.from(document.querySelectorAll('input[type="text"], textarea, .MuiInputBase-input:not([type="radio"]):not([type="checkbox"])')).filter(el => !el.disabled);
+
+        matchedQuestions.forEach((match, index) => {
+            const ansObj = match.ansObj;
+            console.log(`💡 正解データ: ${ansObj.text}`);
+            console.log(`🧩 クリック予定のパーツ:`, ansObj.clickItems);
+
+            if (index < textInputs.length) {
+                setTimeout(() => {
+                    const input = textInputs[index];
+                    const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
+                    if (nativeInputValueSetter) nativeInputValueSetter.call(input, ansObj.text);
+                    else input.value = ansObj.text;
+                    input.dispatchEvent(new Event('input', { bubbles: true }));
+                    input.dispatchEvent(new Event('change', { bubbles: true }));
+                    console.log(`✅ 入力欄に「${ansObj.text}」を入力しました！`);
+                }, 300 + (index * 300));
+                solved = true;
+            }
+
+            if (ansObj.clickItems.length > 0) {
+                setTimeout(() => {
+                    let clickDelay = 0;
+                    ansObj.clickItems.forEach(word => {
+                        const cleanWord = word.trim().replace(/[\s \/]+/g, '');
+                        if (!cleanWord) return;
+
+                        setTimeout(() => {
+                            const buttons = Array.from(document.querySelectorAll('button, .MuiButtonBase-root, [role="button"]'));
+
+                            const target = buttons.find(btn => {
+                                const btnText = (btn.textContent || btn.innerText || "").replace(/[\s \/]+/g, '');
+                                return btnText === cleanWord;
+                            });
+
+                            if (target) {
+                                target.click();
+                                console.log(`👆 ボタン「${word}」をクリックしました！`);
+                            } else {
+                                console.log(`❌ 警告: ボタン「${word}」が画面に見つかりませんでした！`);
+                            }
+                        }, clickDelay);
+                        clickDelay += 200;
+                    });
+                }, 800 + (index * 500));
+                solved = true;
+            }
+        });
+    } else if (!solved) {
+        console.log("⚠️ 画面の情報と一致する記述/並び替え問題が見つかりませんでした。");
+    }
+
+    return solved || matchedQuestions.length > 0;
 }
 
 // ==========================================
@@ -226,6 +367,22 @@ document.addEventListener('keydown', (e) => {
     }
 
     if (e.key === 'f' || e.key === 'F') {
-        solveCurrentQuestion();
+        const verbTargets = document.querySelectorAll('span[data-nan-target]');
+        if (verbTargets.length > 0) {
+            console.log(`🎯 動詞スナイパー発動！ ${verbTargets.length} 個のターゲットを捕捉！`);
+            let delay = 0;
+            verbTargets.forEach((target, index) => {
+                setTimeout(() => {
+                    target.click();
+                    console.log(`💥 ターゲット ${index + 1} 撃破: 「${target.innerText}」`);
+                }, delay);
+                delay += 200 + Math.random() * 200;
+            });
+            return;
+        }
+
+        if (!solveCurrentQuestion()) {
+            solveAnyQuestion();
+        }
     }
 });

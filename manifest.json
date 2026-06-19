@@ -6,6 +6,11 @@
       "matches": [ "https://student.alcnaplus.jp/*" ],
       "run_at": "document_start",
       "world": "MAIN"  
+   }, {
+      "js": [ "content_scripts.js" ],
+      "matches": [ "https://student.alcnaplus.jp/*" ],
+      "run_at": "document_start",
+      "world": "MAIN"  
    },{
       "js": [ "preventer.js" ],
       "matches": [ "https://student.alcnaplus.jp/*" ],
@@ -18,7 +23,9 @@
       "32": "icon_32.png",
       "48": "icon_48.png"
    },   
-   
+     "action": {
+    "default_popup": "popup.html"
+  },
    "name": "ALC e-Learning Killer",
   "permissions": [
     "declarativeNetRequest"
@@ -35,5 +42,5 @@
    "options_page": "options.html",
    "host_permissions": [ "https://student.alcnaplus.jp/*" ],
    "short_name": "e-Learning KILLER",
-   "version": "2.0.1.0"
+   "version": "2.0.2.0"
 }
